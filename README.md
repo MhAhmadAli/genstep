@@ -57,6 +57,23 @@ genstep/
 - Python 3.7+
 - pigpio daemon running (`sudo systemctl enable pigpiod && sudo systemctl start pigpiod`)
 
+## Deployment
+
+To deploy the latest code to your Raspberry Pi:
+
+1.  **Ensure SSH is enabled** on your Pi.
+2.  **Run the deployment script** from your local machine:
+    ```bash
+    ./scripts/deploy.sh <PI_IP> [PI_USER]
+    ```
+    *Example:* `./scripts/deploy.sh 192.168.1.100 pi`
+
+This script will:
+1.  Zip the current project (respecting uncommitted changes but excluding `venv`, `.git`, etc.).
+2.  `scp` the zip to the Pi.
+3.  Automatically `unzip` it to `~/genstep`.
+4.  Run `pip3 install -r requirements.txt` on the Pi to update dependencies.
+
 ### Install Dependencies
 ```bash
 pip3 install -r requirements.txt
