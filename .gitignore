@@ -26,3 +26,5 @@ Thumbs.db
 
 # Calibration data (auto-generated, user-specific)
 data/calibration.json
+
+genstep.zip

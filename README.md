@@ -72,7 +72,8 @@ This script will:
 1.  Zip the current project (respecting uncommitted changes but excluding `venv`, `.git`, etc.).
 2.  `scp` the zip to the Pi host.
 3.  Automatically `unzip` it to `~/genstep`.
-4.  Run `pip3 install -r requirements.txt` on the Pi to update dependencies.
+4.  **Create a virtual environment (`venv`)** on the Pi (if it doesn't exist).
+5.  Run `pip install` within that venv to update dependencies safely.
 
 ### Install Dependencies
 ```bash

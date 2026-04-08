@@ -43,9 +43,17 @@ ssh $SSH_HOST << EOF
     unzip -o ~/genstep.zip -d $DEFAULT_DEST_PATH
     rm ~/genstep.zip
     cd $DEFAULT_DEST_PATH
-    # Install dependencies
+    
+    # Create venv if not exists
+    if [ ! -d "venv" ]; then
+        echo "Creating virtual environment on Pi..."
+        python3 -m venv venv
+    fi
+
+    # Install dependencies into venv
     if [ -f requirements.txt ]; then
-        pip3 install -r requirements.txt
+        echo "Installing requirements into venv..."
+        ./venv/bin/pip install -r requirements.txt
     fi
     echo "Deployment successful."
 EOF
@@ -61,4 +69,4 @@ echo "[4/4] Cleaning up local ZIP..."
 rm $ZIP_FILE
 
 echo "--- Deployment Complete! ---"
-echo "You can now run the app on the Pi: ssh $SSH_HOST 'python3 $DEFAULT_DEST_PATH/src/main.py'"
+echo "You can now run the app on the Pi: ssh $SSH_HOST '$DEFAULT_DEST_PATH/venv/bin/python $DEFAULT_DEST_PATH/src/main.py'"
