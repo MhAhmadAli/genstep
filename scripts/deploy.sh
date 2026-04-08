@@ -5,21 +5,14 @@
 
 # Configuration
 PROJECT_NAME="genstep"
-DEFAULT_USER="pi"
+DEFAULT_HOST="genstep"
 DEFAULT_DEST_PATH="~/genstep"
 ZIP_FILE="genstep.zip"
 
-# Usage check
-if [ "$1" == "" ]; then
-    echo "Usage: ./scripts/deploy.sh [PI_IP] [PI_USER]"
-    echo "Example: ./scripts/deploy.sh 192.168.1.100 pi"
-    exit 1
-fi
+# Use first argument if provided, otherwise fallback to default host
+SSH_HOST=${1:-$DEFAULT_HOST}
 
-PI_IP=$1
-PI_USER=${2:-$DEFAULT_USER}
-
-echo "--- Deploying $PROJECT_NAME to $PI_USER@$PI_IP ---"
+echo "--- Deploying $PROJECT_NAME to SSH host: $SSH_HOST ---"
 
 # 1. Clean up old artifacts locally
 [ -f $ZIP_FILE ] && rm $ZIP_FILE
@@ -34,18 +27,18 @@ if [ $? -ne 0 ]; then
 fi
 
 # 3. Transfer to Pi
-echo "[2/4] Transferring $ZIP_FILE to $PI_USER@$PI_IP..."
-scp $ZIP_FILE $PI_USER@$PI_IP:~/
+echo "[2/4] Transferring $ZIP_FILE to $SSH_HOST..."
+scp $ZIP_FILE $SSH_HOST:~/
 
 if [ $? -ne 0 ]; then
-    echo "Error: scp failed. Make sure SSH is enabled and credentials are correct."
+    echo "Error: scp failed. Make sure SSH host '$SSH_HOST' is reachable."
     rm $ZIP_FILE
     exit 1
 fi
 
 # 4. Remote setup (Unzip, install dependencies)
 echo "[3/4] Unpacking and installing dependencies on Pi..."
-ssh $PI_USER@$PI_IP << EOF
+ssh $SSH_HOST << EOF
     mkdir -p $DEFAULT_DEST_PATH
     unzip -o ~/genstep.zip -d $DEFAULT_DEST_PATH
     rm ~/genstep.zip
@@ -68,4 +61,4 @@ echo "[4/4] Cleaning up local ZIP..."
 rm $ZIP_FILE
 
 echo "--- Deployment Complete! ---"
-echo "You can now run the app on the Pi: ssh $PI_USER@$PI_IP 'python3 $DEFAULT_DEST_PATH/src/main.py'"
+echo "You can now run the app on the Pi: ssh $SSH_HOST 'python3 $DEFAULT_DEST_PATH/src/main.py'"
