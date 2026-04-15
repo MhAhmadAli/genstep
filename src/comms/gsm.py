@@ -1,23 +1,40 @@
 import serial
 import time
+from comms.software_serial import SoftwareSerial
 
 
 class GSMModule:
     """Sends SMS via AT commands with retry and error tracking."""
 
-    def __init__(self, port, baud_rate=9600, timeout=1, init_retries=2):
+    def __init__(
+        self,
+        port=None,
+        baud_rate=9600,
+        timeout=1,
+        init_retries=2,
+        rx_pin=None,
+        tx_pin=None,
+    ):
         self.serial = None
         self.last_error = None
         self.last_response = ""
+        self.timeout = float(timeout)
 
         for attempt in range(max(1, int(init_retries))):
             try:
-                self.serial = serial.Serial(port, baud_rate, timeout=timeout)
+                if rx_pin is not None and tx_pin is not None:
+                    self.serial = SoftwareSerial(rx_pin, tx_pin, baud_rate=baud_rate, timeout=timeout)
+                else:
+                    if not port:
+                        raise ValueError(
+                            "A serial port is required when rx_pin/tx_pin are not provided."
+                        )
+                    self.serial = serial.Serial(port, baud_rate, timeout=timeout)
                 # Give modem time to boot and flush startup noise.
                 time.sleep(1)
                 self.serial.reset_input_buffer()
                 self.serial.reset_output_buffer()
-                ready, _ = self._send_at_command("AT", expected_response="OK", wait_time=0.5)
+                ready, _ = self._send_at_command("AT", expected_response="OK", wait_time=2.0)
                 if ready:
                     return
                 self.last_error = "GSM modem did not respond to AT."
@@ -30,6 +47,20 @@ class GSMModule:
             if attempt < max(1, int(init_retries)) - 1:
                 time.sleep(1)
 
+    def _read_until(self, expected_text=None, timeout=None):
+        deadline = time.monotonic() + (timeout if timeout is not None else self.timeout)
+        chunks = []
+        while time.monotonic() < deadline:
+            raw = self.serial.read_all()
+            if raw:
+                chunk = raw.decode("ascii", errors="ignore")
+                chunks.append(chunk)
+                combined = "".join(chunks)
+                if expected_text and expected_text in combined:
+                    return combined
+            time.sleep(0.05)
+        return "".join(chunks)
+
     def _send_at_command(self, command, expected_response="OK", wait_time=1):
         if not self.serial:
             self.last_error = "GSM serial connection is unavailable."
@@ -38,8 +69,7 @@ class GSMModule:
         try:
             self.serial.reset_input_buffer()
             self.serial.write((command + "\r\n").encode("ascii"))
-            time.sleep(wait_time)
-            response = self.serial.read_all().decode("ascii", errors="ignore")
+            response = self._read_until(expected_text=expected_response, timeout=wait_time)
             self.last_response = response
             if expected_response in response:
                 self.last_error = None
@@ -75,8 +105,7 @@ class GSMModule:
             try:
                 self.serial.reset_input_buffer()
                 self.serial.write((f'AT+CMGS="{phone_number}"\r\n').encode("ascii"))
-                time.sleep(0.5)
-                prompt = self.serial.read_all().decode("ascii", errors="ignore")
+                prompt = self._read_until(expected_text=">", timeout=2.0)
                 if ">" not in prompt:
                     self.last_error = f"GSM did not provide SMS prompt. Response: {prompt.strip()}"
                     if attempt < max(1, int(retry_attempts)) - 1:
@@ -85,8 +114,7 @@ class GSMModule:
                     return False
 
                 self.serial.write((message + chr(26)).encode("ascii"))
-                time.sleep(3)
-                response = self.serial.read_all().decode("ascii", errors="ignore")
+                response = self._read_until(expected_text="+CMGS", timeout=8.0)
                 self.last_response = response
                 if "+CMGS" in response and "ERROR" not in response:
                     self.last_error = None

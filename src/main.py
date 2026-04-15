@@ -8,6 +8,7 @@ from sensors.camera import AIObjectDetector
 from feedback.alerter import BuzzerAlerter
 from comms.gps import GPSModule
 from comms.gsm import GSMModule
+from comms.api_server import MobileAPIServer
 from comms.emergency import format_sos_message, should_send_sos
 from calibration import CalibrationManager
 
@@ -36,16 +37,28 @@ def main():
 
     gps = None
     gsm = None
+    api_server = None
 
     if ENABLE_GPS:
-        gps = GPSModule(
-            GPS_PORT,
-            BAUD_RATE,
-            timeout=GPS_SERIAL_TIMEOUT_SECONDS,
-            read_retries=GPS_READ_RETRIES,
-        )
+        if USE_SOFTWARE_SERIAL:
+            gps = GPSModule(
+                baud_rate=BAUD_RATE,
+                timeout=GPS_SERIAL_TIMEOUT_SECONDS,
+                read_retries=GPS_READ_RETRIES,
+                rx_pin=GPS_RX_PIN,
+                tx_pin=GPS_TX_PIN,
+            )
+            gps_endpoint = f"GPIO RX{GPS_RX_PIN}/TX{GPS_TX_PIN} (software serial)"
+        else:
+            gps = GPSModule(
+                GPS_PORT,
+                BAUD_RATE,
+                timeout=GPS_SERIAL_TIMEOUT_SECONDS,
+                read_retries=GPS_READ_RETRIES,
+            )
+            gps_endpoint = GPS_PORT
         if gps.serial:
-            print(f"[GPS] Enabled on {GPS_PORT}.")
+            print(f"[GPS] Enabled on {gps_endpoint}.")
         else:
             print(f"[GPS] Disabled due to initialization failure: {gps.last_error}")
             gps = None
@@ -53,18 +66,37 @@ def main():
         print("[GPS] Disabled by configuration.")
 
     if ENABLE_GSM:
-        gsm = GSMModule(
-            GSM_PORT,
-            BAUD_RATE,
-            init_retries=GSM_INIT_RETRY_ATTEMPTS,
-        )
+        if USE_SOFTWARE_SERIAL:
+            gsm = GSMModule(
+                baud_rate=BAUD_RATE,
+                timeout=GSM_SERIAL_TIMEOUT_SECONDS,
+                init_retries=GSM_INIT_RETRY_ATTEMPTS,
+                rx_pin=GSM_RX_PIN,
+                tx_pin=GSM_TX_PIN,
+            )
+            gsm_endpoint = f"GPIO RX{GSM_RX_PIN}/TX{GSM_TX_PIN} (software serial)"
+        else:
+            gsm = GSMModule(
+                GSM_PORT,
+                BAUD_RATE,
+                timeout=GSM_SERIAL_TIMEOUT_SECONDS,
+                init_retries=GSM_INIT_RETRY_ATTEMPTS,
+            )
+            gsm_endpoint = GSM_PORT
         if gsm.serial:
-            print(f"[GSM] Enabled on {GSM_PORT}.")
+            print(f"[GSM] Enabled on {gsm_endpoint}.")
         else:
             print(f"[GSM] Disabled due to initialization failure: {gsm.last_error}")
             gsm = None
     else:
         print("[GSM] Disabled by configuration.")
+
+    if ENABLE_MOBILE_API:
+        api_server = MobileAPIServer(MOBILE_API_HOST, MOBILE_API_PORT)
+        api_server.start()
+        print(f"[API] Enabled on http://{MOBILE_API_HOST}:{MOBILE_API_PORT}")
+    else:
+        print("[API] Disabled by configuration.")
 
     # Load calibration (falls back to defaults if no file exists)
     cal = CalibrationManager()
@@ -124,6 +156,17 @@ def main():
                     buzzer.stop()
                     current_alert_level = 0
 
+            if api_server:
+                api_server.update_state(
+                    status="running",
+                    obstacle_distance_m=distance,
+                    ground_distance_m=ground_dist,
+                    drop_off=drop_off,
+                    is_step=is_step,
+                    intense_condition=intense_condition,
+                    alert_level=current_alert_level,
+                )
+
             manual_sos = _read_manual_sos_trigger()
             now = time.monotonic()
             if should_send_sos(
@@ -136,6 +179,13 @@ def main():
                 trigger_reason = "manual" if manual_sos else "blocked"
                 location = gps.get_location() if gps else None
                 message = format_sos_message(trigger_reason, location)
+                if api_server:
+                    api_server.update_sos(
+                        last_attempt_unix=time.time(),
+                        last_trigger_reason=trigger_reason,
+                        last_result="attempting",
+                        last_error=None,
+                    )
 
                 if gsm and EMERGENCY_PHONE_NUMBER:
                     sent = gsm.send_sms(
@@ -146,12 +196,33 @@ def main():
                     if sent:
                         print(f"[SOS] Sent successfully ({trigger_reason}).")
                         last_sos_sent_at = now
+                        if api_server:
+                            api_server.update_sos(
+                                last_sent_unix=time.time(),
+                                last_result="sent",
+                                last_error=None,
+                            )
                     else:
                         print(f"[SOS] Send failed: {gsm.last_error}")
+                        if api_server:
+                            api_server.update_sos(
+                                last_result="failed",
+                                last_error=gsm.last_error,
+                            )
                 elif not gsm:
                     print("[SOS] Skipped send: GSM module unavailable.")
+                    if api_server:
+                        api_server.update_sos(
+                            last_result="skipped",
+                            last_error="GSM module unavailable",
+                        )
                 else:
                     print("[SOS] Skipped send: EMERGENCY_PHONE_NUMBER is not configured.")
+                    if api_server:
+                        api_server.update_sos(
+                            last_result="skipped",
+                            last_error="EMERGENCY_PHONE_NUMBER is not configured",
+                        )
 
             # Small delay to prevent CPU pegging
             time.sleep(0.1)

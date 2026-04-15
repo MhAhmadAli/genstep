@@ -2,9 +2,13 @@
 # Defines all GPIO pin mappings and systemic thresholds
 
 # Ultrasonic Sensors (Trig, Echo)
-SONAR_1_PINS = (24, 23)
-SONAR_2_PINS = (18, 25)
-SONAR_3_PINS = (13, 19)
+# Sensor order:
+#   SONAR_1 = bottom (downward-facing)
+#   SONAR_2 = middle (front-facing)
+#   SONAR_3 = top (front-facing)
+SONAR_1_PINS = (18, 25)
+SONAR_2_PINS = (13, 19)
+SONAR_3_PINS = (24, 23)
 
 # IR Sensors
 IR_1_PIN = 6
@@ -13,9 +17,21 @@ IR_2_PIN = 5
 # Feedback
 BUZZER_PIN = 8
 
-# Communication (UART RX, TX info - Note: pyserial uses the serial port name like /dev/serial0)
-GSM_PORT = "/dev/serial0" # May need to be updated to /dev/ttyS0 or /dev/ttyAMA0 based on Pi config
-GPS_PORT = "/dev/serial1" # Depending on UART mapping
+# Communication
+# Default mode uses pigpio software serial on GPIO pins.
+USE_SOFTWARE_SERIAL = True
+
+# Pi-side serial pins (BCM numbering) used when USE_SOFTWARE_SERIAL=True.
+# GSM module: module TX -> Pi RX, module RX -> Pi TX
+GSM_RX_PIN = 2
+GSM_TX_PIN = 3
+# GPS module: module TX -> Pi RX, module RX -> Pi TX
+GPS_RX_PIN = 14
+GPS_TX_PIN = 15
+
+# Optional hardware UART fallback when USE_SOFTWARE_SERIAL=False.
+GSM_PORT = "/dev/serial0"
+GPS_PORT = "/dev/serial1"
 BAUD_RATE = 9600
 ENABLE_GSM = True
 ENABLE_GPS = True
@@ -25,6 +41,7 @@ EMERGENCY_PHONE_NUMBER = "+1234567890"
 SOS_RATE_LIMIT_SECONDS = 60
 GSM_SMS_RETRY_ATTEMPTS = 2
 GSM_INIT_RETRY_ATTEMPTS = 2
+GSM_SERIAL_TIMEOUT_SECONDS = 1
 
 # GPS read behavior
 GPS_READ_RETRIES = 10
@@ -33,6 +50,11 @@ GPS_SERIAL_TIMEOUT_SECONDS = 1
 # Manual SOS trigger behavior
 ENABLE_MANUAL_SOS_STDIN = True
 MANUAL_SOS_COMMAND = "sos"
+
+# Mobile app API server
+ENABLE_MOBILE_API = True
+MOBILE_API_HOST = "0.0.0.0"
+MOBILE_API_PORT = 5000
 
 # Actionable Thresholds (in meters)
 DIST_LIGHT_ALERT = 3.0
