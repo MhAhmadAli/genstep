@@ -55,7 +55,7 @@ genstep/
 ### Prerequisites
 - Raspberry Pi 4 with Raspbian OS
 - Python 3.7+
-- pigpio daemon running (`sudo systemctl enable pigpiod && sudo systemctl start pigpiod`)
+- pigpio daemon running (see `Enable pigpiod on boot` below)
 
 ## Deployment
 
@@ -80,6 +80,19 @@ This script will:
 pip3 install -r requirements.txt
 ```
 
+### Enable pigpiod on boot
+Install and enable the included `systemd` service:
+```bash
+sudo ./scripts/install_pigpiod_service.sh
+```
+
+Useful commands:
+```bash
+sudo systemctl status pigpiod-genstep.service
+sudo systemctl restart pigpiod-genstep.service
+sudo systemctl disable --now pigpiod-genstep.service
+```
+
 ### UART Mapping Checks (Raspberry Pi)
 - Verify enabled UART devices before running comms features:
   ```bash
@@ -93,6 +106,19 @@ pip3 install -r requirements.txt
 ### Run the Main Application
 ```bash
 python3 src/main.py
+```
+
+### Mobile App API (Flask)
+- Enabled by default via `ENABLE_MOBILE_API` in `src/config.py`
+- Host/port are configurable with `MOBILE_API_HOST` and `MOBILE_API_PORT`
+- Endpoints:
+  - `GET /health`
+  - `GET /api/telemetry`
+
+Example (from another device on the same network):
+```bash
+curl http://<PI_IP>:5000/health
+curl http://<PI_IP>:5000/api/telemetry
 ```
 
 Before running, set these values in `src/config.py`:
@@ -126,7 +152,7 @@ python3 tests/test_gsm.py             # Test GSM module
 
 ### Run Unit Tests
 ```bash
-python3 -m unittest tests/test_calibration.py tests/test_gps.py tests/test_gsm.py tests/test_emergency_flow.py -v
+python3 -m unittest tests/test_calibration.py tests/test_gps.py tests/test_gsm.py tests/test_emergency_flow.py tests/test_api_server.py -v
 ```
 
 ## Emergency SMS Payload

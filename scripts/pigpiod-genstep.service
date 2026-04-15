@@ -1,0 +1,12 @@
+[Unit]
+Description=GenStep pigpio daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env pigpiod -g -l
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

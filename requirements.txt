@@ -5,3 +5,4 @@ opencv-python==4.9.0.80
 numpy<2
 lgpio
 rpi-lgpio
+Flask==3.1.3
