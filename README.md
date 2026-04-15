@@ -80,12 +80,30 @@ This script will:
 pip3 install -r requirements.txt
 ```
 
+### UART Mapping Checks (Raspberry Pi)
+- Verify enabled UART devices before running comms features:
+  ```bash
+  ls -l /dev/serial*
+  ```
+- Update `src/config.py` if your Pi exposes GSM/GPS on different device names (`/dev/ttyS0` or `/dev/ttyAMA0`).
+- Ensure your user has serial access permissions (or run via a service account configured for serial devices).
+
 ## Usage
 
 ### Run the Main Application
 ```bash
 python3 src/main.py
 ```
+
+Before running, set these values in `src/config.py`:
+- `ENABLE_GPS` and `ENABLE_GSM` to enable/disable each module independently.
+- `EMERGENCY_PHONE_NUMBER` for SMS destination.
+- `SOS_RATE_LIMIT_SECONDS` to avoid repeated emergency SMS spam.
+- `GPS_READ_RETRIES`, `GPS_SERIAL_TIMEOUT_SECONDS` for GPS reliability tuning.
+- `ENABLE_MANUAL_SOS_STDIN` and `MANUAL_SOS_COMMAND` for manual SOS from terminal.
+
+Manual SOS trigger:
+- While `src/main.py` is running in a terminal, type `sos` then press Enter to send an emergency SMS (rate-limited).
 
 ### Calibrate Sensors
 Hold the stick naturally on flat ground and run:
@@ -108,8 +126,22 @@ python3 tests/test_gsm.py             # Test GSM module
 
 ### Run Unit Tests
 ```bash
-python3 -m unittest tests/test_calibration.py -v
+python3 -m unittest tests/test_calibration.py tests/test_gps.py tests/test_gsm.py tests/test_emergency_flow.py -v
 ```
+
+## Emergency SMS Payload
+- Trigger reasons:
+  - automatic blocked/severe condition
+  - manual terminal trigger (`sos`)
+- Message includes parsed GPS coordinates when fix is available:
+  - `Lat`, `Lon`, optional `UTC`
+- If GPS has no valid fix, message includes `GPS fix unavailable`.
+
+## GPS/GSM Troubleshooting
+- **No GPS fix**: test outdoors with clear sky view, increase `GPS_READ_RETRIES`.
+- **GSM AT failures**: verify SIM/network readiness and power stability; inspect startup response with `tests/test_gsm.py`.
+- **No SMS sent during alerts**: check `EMERGENCY_PHONE_NUMBER`, `ENABLE_GSM`, and rate limit (`SOS_RATE_LIMIT_SECONDS`).
+- **Wrong serial device**: run `ls -l /dev/serial*` and align `GPS_PORT`/`GSM_PORT` in `src/config.py`.
 
 ## Alert Thresholds
 

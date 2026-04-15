@@ -17,6 +17,22 @@ BUZZER_PIN = 8
 GSM_PORT = "/dev/serial0" # May need to be updated to /dev/ttyS0 or /dev/ttyAMA0 based on Pi config
 GPS_PORT = "/dev/serial1" # Depending on UART mapping
 BAUD_RATE = 9600
+ENABLE_GSM = True
+ENABLE_GPS = True
+
+# Emergency messaging
+EMERGENCY_PHONE_NUMBER = "+1234567890"
+SOS_RATE_LIMIT_SECONDS = 60
+GSM_SMS_RETRY_ATTEMPTS = 2
+GSM_INIT_RETRY_ATTEMPTS = 2
+
+# GPS read behavior
+GPS_READ_RETRIES = 10
+GPS_SERIAL_TIMEOUT_SECONDS = 1
+
+# Manual SOS trigger behavior
+ENABLE_MANUAL_SOS_STDIN = True
+MANUAL_SOS_COMMAND = "sos"
 
 # Actionable Thresholds (in meters)
 DIST_LIGHT_ALERT = 3.0
