@@ -22,6 +22,13 @@ class MobileAPIServer:
             "is_step": False,
             "intense_condition": False,
             "alert_level": 0,
+            "camera_enabled": False,
+            "camera_hazards": {
+                "stairs_detected": False,
+                "general_hazard_detected": False,
+                "labels": [],
+            },
+            "camera_detections": [],
             "sos": {
                 "last_attempt_unix": None,
                 "last_sent_unix": None,

@@ -56,6 +56,18 @@ ENABLE_MOBILE_API = True
 MOBILE_API_HOST = "0.0.0.0"
 MOBILE_API_PORT = 5000
 
+# Camera AI
+ENABLE_CAMERA_AI = True
+CAMERA_INDEX = 0
+CAMERA_FRAME_INTERVAL_SECONDS = 0.2
+CAMERA_IMAGE_SIZE = 640
+STAIRS_MODEL_PATH = "models/stairs.pt"
+GENERAL_MODEL_PATH = "yolo11n.pt"
+STAIRS_CONFIDENCE_THRESHOLD = 0.45
+GENERAL_CONFIDENCE_THRESHOLD = 0.35
+# Classes treated as path hazards by the general model.
+GENERAL_HAZARD_CLASSES = {"person", "bicycle", "motorcycle", "car", "bus", "truck"}
+
 # Actionable Thresholds (in meters)
 DIST_LIGHT_ALERT = 3.0
 DIST_MODERATE_ALERT = 1.5

@@ -32,7 +32,17 @@ def main():
     # Hardware Init
     sonar = UltrasonicArray(SONAR_1_PINS, SONAR_2_PINS, SONAR_3_PINS)
     ir = IRArray(IR_1_PIN, IR_2_PIN)
-    camera = AIObjectDetector()
+    camera = AIObjectDetector(
+        camera_index=CAMERA_INDEX,
+        enabled=ENABLE_CAMERA_AI,
+        stairs_model_path=STAIRS_MODEL_PATH,
+        general_model_path=GENERAL_MODEL_PATH,
+        stairs_conf=STAIRS_CONFIDENCE_THRESHOLD,
+        general_conf=GENERAL_CONFIDENCE_THRESHOLD,
+        hazard_classes=GENERAL_HAZARD_CLASSES,
+        frame_interval_seconds=CAMERA_FRAME_INTERVAL_SECONDS,
+        image_size=CAMERA_IMAGE_SIZE,
+    )
     buzzer = BuzzerAlerter(BUZZER_PIN)
 
     gps = None
@@ -98,6 +108,13 @@ def main():
     else:
         print("[API] Disabled by configuration.")
 
+    if ENABLE_CAMERA_AI and camera.enabled:
+        print("[Camera] AI inference enabled.")
+    elif ENABLE_CAMERA_AI:
+        print(f"[Camera] Disabled due to initialization failure: {camera.last_error}")
+    else:
+        print("[Camera] Disabled by configuration.")
+
     # Load calibration (falls back to defaults if no file exists)
     cal = CalibrationManager()
     cal_data = cal.load()
@@ -124,17 +141,35 @@ def main():
             drop_off = ir.detect_dropoff()
 
             # 4. Read camera AI detections
-            # objects = camera.analyze_frame()
+            objects = camera.analyze_frame() if camera.enabled else []
+            camera_hazards = camera.summarize_hazards(objects) if camera.enabled else {
+                "stairs_detected": False,
+                "general_hazard_detected": False,
+                "labels": [],
+            }
 
             # 5. Logic & Feedback
             is_step = ground_dist > step_down or ground_dist < step_up
-            intense_condition = drop_off or is_step or distance < DIST_INTENSE_ALERT
+            camera_intense_condition = (
+                camera_hazards["stairs_detected"] or camera_hazards["general_hazard_detected"]
+            )
+            intense_condition = (
+                drop_off
+                or is_step
+                or distance < DIST_INTENSE_ALERT
+                or camera_intense_condition
+            )
 
-            if drop_off or is_step:
+            if drop_off or is_step or camera_hazards["stairs_detected"]:
                 # Extreme danger or step/drop-off detected, immediate intense alert
                 if current_alert_level != 3:
                     buzzer.intense_alert()
                     current_alert_level = 3
+
+            elif camera_hazards["general_hazard_detected"]:
+                if current_alert_level != 2:
+                    buzzer.moderate_alert()
+                    current_alert_level = 2
 
             elif distance < DIST_INTENSE_ALERT:
                 if current_alert_level != 3:
@@ -165,6 +200,9 @@ def main():
                     is_step=is_step,
                     intense_condition=intense_condition,
                     alert_level=current_alert_level,
+                    camera_enabled=camera.enabled,
+                    camera_hazards=camera_hazards,
+                    camera_detections=objects[:10],
                 )
 
             manual_sos = _read_manual_sos_trigger()

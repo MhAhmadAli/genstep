@@ -10,7 +10,25 @@ from comms.api_server import MobileAPIServer
 class TestMobileAPIServer(unittest.TestCase):
     def test_health_and_telemetry_endpoints(self):
         api = MobileAPIServer()
-        api.update_state(status="running", obstacle_distance_m=1.2, alert_level=2)
+        api.update_state(
+            status="running",
+            obstacle_distance_m=1.2,
+            alert_level=2,
+            camera_enabled=True,
+            camera_hazards={
+                "stairs_detected": True,
+                "general_hazard_detected": False,
+                "labels": ["stairs"],
+            },
+            camera_detections=[
+                {
+                    "source": "stairs_model",
+                    "label": "stairs",
+                    "confidence": 0.88,
+                    "bbox": [1.0, 2.0, 3.0, 4.0],
+                }
+            ],
+        )
         api.update_sos(last_result="sent", last_trigger_reason="manual")
 
         client = api.app.test_client()
@@ -25,6 +43,9 @@ class TestMobileAPIServer(unittest.TestCase):
         self.assertEqual(payload["status"], "running")
         self.assertAlmostEqual(payload["obstacle_distance_m"], 1.2)
         self.assertEqual(payload["alert_level"], 2)
+        self.assertTrue(payload["camera_enabled"])
+        self.assertTrue(payload["camera_hazards"]["stairs_detected"])
+        self.assertEqual(payload["camera_detections"][0]["label"], "stairs")
         self.assertEqual(payload["sos"]["last_result"], "sent")
         self.assertEqual(payload["sos"]["last_trigger_reason"], "manual")
 

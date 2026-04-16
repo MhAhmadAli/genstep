@@ -121,6 +121,18 @@ curl http://<PI_IP>:5000/health
 curl http://<PI_IP>:5000/api/telemetry
 ```
 
+### Camera AI Models (Dual Inference)
+- Camera AI is controlled by `ENABLE_CAMERA_AI` in `src/config.py`.
+- Two YOLO models are loaded together:
+  - `STAIRS_MODEL_PATH` (custom model, default: `models/stairs.pt`)
+  - `GENERAL_MODEL_PATH` (default YOLOv11 model, default: `yolo11n.pt`)
+- Detection confidence and frame pacing can be tuned with:
+  - `STAIRS_CONFIDENCE_THRESHOLD`
+  - `GENERAL_CONFIDENCE_THRESHOLD`
+  - `CAMERA_FRAME_INTERVAL_SECONDS`
+  - `CAMERA_IMAGE_SIZE`
+- `GENERAL_HAZARD_CLASSES` defines which general-model classes are treated as obstacles in the main alert logic.
+
 Before running, set these values in `src/config.py`:
 - `ENABLE_GPS` and `ENABLE_GSM` to enable/disable each module independently.
 - `EMERGENCY_PHONE_NUMBER` for SMS destination.
@@ -146,13 +158,15 @@ python3 tests/test_ultrasonic_2.py    # Test front sonar
 python3 tests/test_ir.py              # Test IR sensors
 python3 tests/test_buzzer.py          # Test buzzer
 python3 tests/test_camera.py          # Test camera
+python3 tests/test_gps_raw_console.py # Stream raw GPS NMEA output
+python3 tests/test_gsm_at_console.py  # Interactive GSM AT command console
 python3 tests/test_gps.py             # Test GPS module
 python3 tests/test_gsm.py             # Test GSM module
 ```
 
 ### Run Unit Tests
 ```bash
-python3 -m unittest tests/test_calibration.py tests/test_gps.py tests/test_gsm.py tests/test_emergency_flow.py tests/test_api_server.py -v
+python3 -m unittest tests/test_calibration.py tests/test_gps.py tests/test_gsm.py tests/test_emergency_flow.py tests/test_api_server.py tests/test_camera_pipeline.py -v
 ```
 
 ## Emergency SMS Payload
