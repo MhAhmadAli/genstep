@@ -13,6 +13,10 @@ SONAR_3_PINS = (24, 23)
 # IR Sensors
 IR_1_PIN = 6
 IR_2_PIN = 5
+# IR polarity for LineSensor interpretation:
+# - True  -> active-low boards (drop when sensor output goes LOW)
+# - False -> active-high boards (drop when sensor output goes HIGH)
+IR_ACTIVE_LOW = True
 
 # Feedback
 BUZZER_PIN = 8
@@ -97,7 +101,7 @@ DIST_INTENSE_ALERT = 0.3
 
 # Sonar gate for the heavier general model: it only runs when the front
 # obstacle is within this distance. Tunable independently of the alert levels.
-CAMERA_GENERAL_GATE_DISTANCE_M = DIST_LIGHT_ALERT
+CAMERA_GENERAL_GATE_DISTANCE_M = 5.0
 
 # Audio object announcements (spoken through the Pi 3.5mm headphone jack).
 ENABLE_AUDIO_FEEDBACK = True

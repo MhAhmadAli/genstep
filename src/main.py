@@ -32,7 +32,7 @@ def main():
 
     # Hardware Init
     sonar = UltrasonicArray(SONAR_1_PINS, SONAR_2_PINS, SONAR_3_PINS)
-    ir = IRArray(IR_1_PIN, IR_2_PIN)
+    ir = IRArray(IR_1_PIN, IR_2_PIN, active_low=IR_ACTIVE_LOW)
     camera = AIObjectDetector(
         camera_index=CAMERA_INDEX,
         enabled=ENABLE_CAMERA_AI,

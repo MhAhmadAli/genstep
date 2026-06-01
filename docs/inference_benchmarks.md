@@ -30,10 +30,13 @@ Hardware: Raspberry Pi 4 (___ GB), Raspberry Pi OS ___, governor: ___ (default /
 
 | Config | imgsz | stairs p50 / p95 (ms) | general p50 / p95 (ms) | end-to-end p50 (ms) | FPS | CPU % | RSS (MB) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| PyTorch, still image | 320 | / | / | | | | |
-| NCNN, still image | 320 | / | / | | | | |
+| PyTorch, still image | 320 | 450.2 / 459.1 | 211.2 / 216.5 | 662.1 | 1.51 | 280 | 484 |
+| NCNN, still image | 320 | 275.2 / 290.5 | 115.4 / 137.1 | 392.3 | 2.53 | 352 | 621 |
 | NCNN + perf governor, still image | 320 | / | / | | | | |
 | NCNN, live camera | 320 | / | / | | | | |
+
+n = 200 frames per run, same still image for both backends. `end-to-end` is the
+sum of both model inferences per frame (capture excluded).
 
 ### Sonar gating (general model idle in open space)
 
@@ -58,6 +61,12 @@ cost once capture+inference run on the background thread.
 
 ## Observations
 
-- _Speedup PyTorch -> NCNN:_ ___x
-- _Per-frame latency change:_ ___
-- _Notes:_ ___
+- _Speedup PyTorch -> NCNN (still image, imgsz 320):_ ~1.68x throughput (1.51 -> 2.53 FPS).
+  - stairs model: 450.2 -> 275.2 ms p50 (1.64x)
+  - general model: 211.2 -> 115.4 ms p50 (1.83x)
+- _Per-frame latency change:_ end-to-end p50 662.1 -> 392.3 ms, a ~41% reduction (~270 ms saved per dual-model frame).
+- _Resource use:_ CPU rose 280% -> 352% (NCNN parallelizes across more cores, which is why it is faster); RSS 484 -> 621 MB.
+- _Notes / follow-ups:_
+  - The custom `stairs.pt` (22 MB) dominates latency (~2x the general yolo11n model), so it is the best target for further speedup (smaller/quantized stairs model, or a higher `CAMERA_STAIRS_INFER_EVERY_N`).
+  - CPU at 352% (~3.5 cores) suggests NCNN is using all 4 cores despite `CAMERA_INFER_THREADS=3`; NCNN may not honor `OMP_NUM_THREADS`/`cv2.setNumThreads`. If leaving a core free for sonar/buzzer/Flask matters under load, set the NCNN thread count explicitly.
+  - Still short of the 2-3x / "halve latency" target at imgsz 320 with both models always on; the sonar-gating (general model idle in open space) and async worker close most of that gap in real-world use. Capture the gating and live-camera rows next.

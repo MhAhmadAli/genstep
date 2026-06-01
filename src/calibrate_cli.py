@@ -14,7 +14,7 @@ import sys
 
 from config import (
     SONAR_1_PINS, SONAR_2_PINS, SONAR_3_PINS,
-    IR_1_PIN, IR_2_PIN, BUZZER_PIN,
+    IR_1_PIN, IR_2_PIN, IR_ACTIVE_LOW, BUZZER_PIN,
     CALIBRATION_TIME_SECONDS,
 )
 from calibration import CalibrationManager
@@ -36,7 +36,7 @@ def run_calibration(duration):
     """Initialize hardware, run the calibration routine, then exit."""
     print("Initializing hardware for calibration...")
     sonar = UltrasonicArray(SONAR_1_PINS, SONAR_2_PINS, SONAR_3_PINS)
-    ir = IRArray(IR_1_PIN, IR_2_PIN)
+    ir = IRArray(IR_1_PIN, IR_2_PIN, active_low=IR_ACTIVE_LOW)
     buzzer = BuzzerAlerter(BUZZER_PIN)
 
     mgr = CalibrationManager()
