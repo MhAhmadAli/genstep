@@ -86,6 +86,9 @@ STAIRS_CONFIDENCE_THRESHOLD = 0.45
 GENERAL_CONFIDENCE_THRESHOLD = 0.35
 CAMERA_STAIRS_INFER_EVERY_N = 1
 CAMERA_GENERAL_INFER_EVERY_N = 2
+# Labels from the stairs model that should be treated as true stairs hazards.
+# If your custom model uses different class names, update this set.
+STAIRS_HAZARD_LABELS = {"stairs", "stair", "steps", "step"}
 # OpenCV/OMP inference thread count. Pi 4 has 4 cores; leave one for the
 # sonar/buzzer/Flask/TTS work that runs alongside inference.
 CAMERA_INFER_THREADS = 3

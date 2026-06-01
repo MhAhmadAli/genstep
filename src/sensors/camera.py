@@ -20,6 +20,7 @@ class AIObjectDetector:
         stairs_conf=0.45,
         general_conf=0.35,
         hazard_classes=None,
+        stairs_hazard_labels=None,
         use_picamera2=True,
         camera_resolution=(1280, 720),
         frame_interval_seconds=0.2,
@@ -42,6 +43,9 @@ class AIObjectDetector:
         self.stairs_conf = float(stairs_conf)
         self.general_conf = float(general_conf)
         self.hazard_classes = set(hazard_classes or set())
+        self.stairs_hazard_labels = {
+            str(label).lower() for label in (stairs_hazard_labels or set())
+        }
         self.use_picamera2 = bool(use_picamera2)
         self.camera_resolution = tuple(camera_resolution) if camera_resolution else (1280, 720)
         self.frame_interval_seconds = max(0.05, float(frame_interval_seconds))
@@ -304,7 +308,14 @@ class AIObjectDetector:
 
     def summarize_hazards(self, detections):
         labels = {item.get("label") for item in detections}
-        stairs_detected = any(item.get("source") == "stairs_model" for item in detections)
+        stairs_detected = any(
+            item.get("source") == "stairs_model"
+            and (
+                not self.stairs_hazard_labels
+                or item.get("label") in self.stairs_hazard_labels
+            )
+            for item in detections
+        )
         general_hazard_detected = any(label in self.hazard_classes for label in labels)
         return {
             "stairs_detected": stairs_detected,

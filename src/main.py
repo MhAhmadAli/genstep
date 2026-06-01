@@ -44,6 +44,7 @@ def main():
         stairs_conf=STAIRS_CONFIDENCE_THRESHOLD,
         general_conf=GENERAL_CONFIDENCE_THRESHOLD,
         hazard_classes=GENERAL_HAZARD_CLASSES,
+        stairs_hazard_labels=STAIRS_HAZARD_LABELS,
         use_picamera2=CAMERA_USE_PICAMERA2,
         camera_resolution=CAMERA_RESOLUTION,
         frame_interval_seconds=CAMERA_FRAME_INTERVAL_SECONDS,
