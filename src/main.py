@@ -307,6 +307,24 @@ def main():
                 buzzer.stop()
                 current_alert_level = 0
                 alert_silenced_for_stale_state = True
+            elif target_alert_level > 0 and alert_silenced_for_stale_state:
+                # If the hazard remains latched for a long time (e.g., persistent
+                # drop-off signal), periodically re-arm the buzzer so feedback
+                # does not go silent forever.
+                rearm_after_seconds = ALERT_MAX_ACTIVE_SECONDS + max(BUZZER_COOLDOWN_SECONDS, 1)
+                if (now - last_alert_state_change_ts) >= rearm_after_seconds:
+                    started = False
+                    if target_alert_level == 3:
+                        started = buzzer.intense_alert()
+                    elif target_alert_level == 2:
+                        started = buzzer.moderate_alert()
+                    else:
+                        started = buzzer.light_alert()
+
+                    if started:
+                        current_alert_level = target_alert_level
+                        last_alert_state_change_ts = now
+                        alert_silenced_for_stale_state = False
 
             if api_server:
                 api_server.update_state(
