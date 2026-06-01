@@ -23,6 +23,7 @@ class AIObjectDetector:
         use_picamera2=True,
         camera_resolution=(1280, 720),
         frame_interval_seconds=0.2,
+        max_detection_age_seconds=1.0,
         image_size=640,
         stairs_infer_every_n=1,
         general_infer_every_n=1,
@@ -44,6 +45,11 @@ class AIObjectDetector:
         self.use_picamera2 = bool(use_picamera2)
         self.camera_resolution = tuple(camera_resolution) if camera_resolution else (1280, 720)
         self.frame_interval_seconds = max(0.05, float(frame_interval_seconds))
+        # Never trust cached detections older than this. Floored at one nominal
+        # cadence so a healthy pipeline is not falsely treated as stale.
+        self.max_detection_age_seconds = max(
+            2 * self.frame_interval_seconds, float(max_detection_age_seconds)
+        )
         self.image_size = int(image_size) if image_size else None
         self.stairs_infer_every_n = max(1, int(stairs_infer_every_n))
         self.general_infer_every_n = max(1, int(general_infer_every_n))
@@ -281,7 +287,13 @@ class AIObjectDetector:
             if self._latest_ts == 0.0:
                 return []
             age = time.monotonic() - self._latest_ts
-            staleness_limit = 2 * self.frame_interval_seconds + 2 * self._last_tick_duration
+            # Adapt to a slower-than-nominal cadence, but cap at an absolute max
+            # so a single slow frame (or a hung capture afterward) can never make
+            # the loop act on very old camera data.
+            staleness_limit = min(
+                self.max_detection_age_seconds,
+                2 * self.frame_interval_seconds + 2 * self._last_tick_duration,
+            )
             if age > staleness_limit:
                 return []
             return list(self._latest_detections)

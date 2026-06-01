@@ -47,6 +47,7 @@ def main():
         use_picamera2=CAMERA_USE_PICAMERA2,
         camera_resolution=CAMERA_RESOLUTION,
         frame_interval_seconds=CAMERA_FRAME_INTERVAL_SECONDS,
+        max_detection_age_seconds=CAMERA_MAX_DETECTION_AGE_SECONDS,
         image_size=CAMERA_IMAGE_SIZE,
         stairs_infer_every_n=CAMERA_STAIRS_INFER_EVERY_N,
         general_infer_every_n=CAMERA_GENERAL_INFER_EVERY_N,

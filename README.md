@@ -77,8 +77,27 @@ This script will:
 5.  Run `pip install` within that venv to update dependencies safely.
 
 ### Install Dependencies
+
+The Raspberry Pi 4 has no NVIDIA GPU, but the default `torch` wheel for aarch64 pulls in ~2 GB of useless CUDA dependencies (`nvidia-cublas`, `nvidia-cudnn`, etc.) that also overflow `/tmp`. Install **CPU-only** PyTorch first, then the rest:
+
 ```bash
-pip3 install -r requirements.txt
+# 1. CPU-only torch (no CUDA, ~200 MB instead of ~2.5 GB)
+pip3 install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# 2. Everything else (torch is already satisfied, so no CUDA wheels are pulled)
+pip3 install --no-cache-dir -r requirements.txt
+```
+
+If a large wheel still fails with `No space left on device`, point pip's temp dir at the SD card (the default `/tmp` is a small tmpfs):
+
+```bash
+export TMPDIR="$HOME/pip-tmp" && mkdir -p "$TMPDIR"
+```
+
+Verify the CPU build:
+
+```bash
+python3 -c "import torch; print(torch.__version__, 'cuda?', torch.cuda.is_available())"  # cuda? False
 ```
 
 ### Enable pigpiod on boot

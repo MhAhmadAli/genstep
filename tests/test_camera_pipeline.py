@@ -157,6 +157,32 @@ class TestCameraPipeline(unittest.TestCase):
         detector.close()
         self.assertTrue(capture._released)
 
+    def test_stale_detections_capped_after_slow_tick(self):
+        detector = AIObjectDetector(
+            enabled=True,
+            frame_interval_seconds=0.05,
+            max_detection_age_seconds=1.0,
+            synchronous=False,
+            model_factory=lambda _: _FakeModel(names={}, boxes=[]),
+            capture=_FakeCapture(),
+        )
+
+        cached = [{"source": "stairs_model", "label": "stairs", "confidence": 0.9, "bbox": [0, 0, 1, 1]}]
+        # Simulate a single very slow tick: the uncapped adaptive limit would be
+        # 2*0.05 + 2*5.0 = 10.1s, but the absolute cap (1.0s) must win.
+        detector._last_tick_duration = 5.0
+        detector._latest_detections = cached
+
+        # 2s old: older than the cap -> must be discarded, not returned.
+        detector._latest_ts = time.monotonic() - 2.0
+        self.assertEqual(detector.analyze_frame(), [])
+
+        # 0.1s old: within the cap -> returned.
+        detector._latest_ts = time.monotonic() - 0.1
+        self.assertEqual(detector.analyze_frame(), cached)
+
+        detector.close()
+
     def test_summarize_hazards_without_matches(self):
         detector = AIObjectDetector(
             enabled=False,

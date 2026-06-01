@@ -65,6 +65,10 @@ CAMERA_USE_PICAMERA2 = True
 # Capture at a smaller source resolution for better Pi-side inference throughput.
 CAMERA_RESOLUTION = (640, 480)
 CAMERA_FRAME_INTERVAL_SECONDS = 0.2
+# Hard upper bound (seconds) on how old a cached detection may be before the
+# async pipeline reports "no detection". Bounds trust in stale camera data if a
+# frame is unusually slow or the capture thread hangs.
+CAMERA_MAX_DETECTION_AGE_SECONDS = 1.0
 CAMERA_IMAGE_SIZE = 320
 STAIRS_MODEL_PATH = "models/stairs.pt"
 GENERAL_MODEL_PATH = "yolo11n.pt"
