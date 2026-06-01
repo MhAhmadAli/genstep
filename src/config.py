@@ -16,7 +16,7 @@ IR_2_PIN = 5
 # IR polarity for LineSensor interpretation:
 # - True  -> active-low boards (drop when sensor output goes LOW)
 # - False -> active-high boards (drop when sensor output goes HIGH)
-IR_ACTIVE_LOW = True
+IR_ACTIVE_LOW = False
 
 # Feedback
 BUZZER_PIN = 8
@@ -39,7 +39,7 @@ GPS_TX_PIN = 15
 GSM_PORT = "/dev/serial0"
 GPS_PORT = "/dev/serial1"
 BAUD_RATE = 9600
-ENABLE_GSM = True
+ENABLE_GSM = False
 ENABLE_GPS = True
 
 # Emergency messaging
