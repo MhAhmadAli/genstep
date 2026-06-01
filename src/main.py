@@ -201,6 +201,7 @@ def main():
 
     current_alert_level = 0  # 0=none, 1=light, 2=moderate, 3=intense
     last_sos_sent_at = 0.0
+    previous_intense_condition = False
     step_candidate_reads = 0
     startup_ts = time.monotonic()
     last_alert_state_change_ts = startup_ts
@@ -342,13 +343,17 @@ def main():
                 )
 
             manual_sos = _read_manual_sos_trigger()
+            hazard_sos_trigger = intense_condition and not previous_intense_condition
             if should_send_sos(
-                intense_condition,
+                hazard_sos_trigger,
                 manual_sos,
                 now,
                 last_sos_sent_at,
                 SOS_RATE_LIMIT_SECONDS,
             ) and uptime_seconds >= SOS_STARTUP_GRACE_SECONDS:
+                # Rate-limit SOS attempts (not only successful sends) so missing
+                # GSM hardware does not spam retries/logs every loop.
+                last_sos_sent_at = now
                 trigger_reason = "manual" if manual_sos else "blocked"
                 location = gps.get_location() if gps else None
                 message = format_sos_message(trigger_reason, location)
@@ -396,6 +401,8 @@ def main():
                             last_result="skipped",
                             last_error="EMERGENCY_PHONE_NUMBER is not configured",
                         )
+
+            previous_intense_condition = intense_condition
 
             # Small delay to prevent CPU pegging
             time.sleep(0.1)
