@@ -1,6 +1,7 @@
 import cv2
 import os
 import sys
+import threading
 import time
 
 
@@ -13,6 +14,9 @@ class AIObjectDetector:
         enabled=True,
         stairs_model_path="models/stairs.pt",
         general_model_path="yolo11n.pt",
+        backend="pytorch",
+        stairs_model_ncnn_path="models/stairs_ncnn_model",
+        general_model_ncnn_path="yolo11n_ncnn_model",
         stairs_conf=0.45,
         general_conf=0.35,
         hazard_classes=None,
@@ -22,12 +26,18 @@ class AIObjectDetector:
         image_size=640,
         stairs_infer_every_n=1,
         general_infer_every_n=1,
+        infer_threads=None,
+        synchronous=False,
         model_factory=None,
         capture=None,
     ):
         self.enabled = bool(enabled)
+        self.backend = str(backend or "pytorch").lower()
+        self.synchronous = bool(synchronous)
         self.stairs_model_path = stairs_model_path
         self.general_model_path = general_model_path
+        self.stairs_model_ncnn_path = stairs_model_ncnn_path
+        self.general_model_ncnn_path = general_model_ncnn_path
         self.stairs_conf = float(stairs_conf)
         self.general_conf = float(general_conf)
         self.hazard_classes = set(hazard_classes or set())
@@ -37,14 +47,25 @@ class AIObjectDetector:
         self.image_size = int(image_size) if image_size else None
         self.stairs_infer_every_n = max(1, int(stairs_infer_every_n))
         self.general_infer_every_n = max(1, int(general_infer_every_n))
+        self.infer_threads = int(infer_threads) if infer_threads else None
         self.last_error = None
         self.last_detections = []
-        self._last_frame_ts = 0.0
         self._frame_counter = 0
         self._stairs_detections = []
         self._general_detections = []
+        self._general_enabled = True
         self._camera_backend = "none"
         self.picam2 = None
+
+        # Async worker state (used when synchronous=False).
+        self._lock = threading.Lock()
+        self._latest_detections = []
+        self._latest_ts = 0.0
+        self._last_tick_duration = 0.0
+        self._running = False
+        self._thread = None
+
+        self._configure_inference_threads()
 
         self.cap = capture if capture is not None else None
         if capture is not None:
@@ -99,6 +120,22 @@ class AIObjectDetector:
         print(f"[Camera] {self.last_error}")
         self.enabled = False
 
+    def _configure_inference_threads(self):
+        """Pin OpenCV/OMP thread counts so inference leaves a core free."""
+        if not self.infer_threads or self.infer_threads <= 0:
+            return
+        os.environ.setdefault("OMP_NUM_THREADS", str(self.infer_threads))
+        try:
+            cv2.setNumThreads(self.infer_threads)
+        except Exception:
+            pass
+
+    def _resolve_model_paths(self):
+        """Pick the on-disk model paths for the configured backend."""
+        if self.backend == "ncnn":
+            return self.stairs_model_ncnn_path, self.general_model_ncnn_path
+        return self.stairs_model_path, self.general_model_path
+
     def _load_models(self):
         if not self.enabled:
             return
@@ -108,12 +145,13 @@ class AIObjectDetector:
 
                 self._model_factory = YOLO
 
-            self.stairs_model = self._model_factory(self.stairs_model_path)
-            self.general_model = self._model_factory(self.general_model_path)
+            stairs_path, general_path = self._resolve_model_paths()
+            self.stairs_model = self._model_factory(stairs_path)
+            self.general_model = self._model_factory(general_path)
             self.last_error = None
             print(
-                f"[Camera] Models loaded (stairs='{self.stairs_model_path}', "
-                f"general='{self.general_model_path}')."
+                f"[Camera] Models loaded (backend='{self.backend}', "
+                f"stairs='{stairs_path}', general='{general_path}')."
             )
         except Exception as exc:
             self.last_error = f"Camera model initialization failed: {exc}"
@@ -169,20 +207,16 @@ class AIObjectDetector:
             )
         return detections
 
-    def analyze_frame(self):
-        """Capture one frame and return normalized detections."""
+    def _tick(self):
+        """Capture one frame, run the enabled models, cache the result."""
         if not self.enabled or (self.picam2 is None and self.cap is None):
-            return []
+            return
 
-        now = time.monotonic()
-        if now - self._last_frame_ts < self.frame_interval_seconds:
-            return self.last_detections
-        self._last_frame_ts = now
-
+        started = time.monotonic()
         ret, frame = self._read_frame()
         if not ret:
             self.last_error = "Failed to capture frame from camera."
-            return []
+            return
 
         try:
             self._frame_counter += 1
@@ -193,7 +227,9 @@ class AIObjectDetector:
                     self.stairs_conf,
                     source="stairs_model",
                 )
-            if self._frame_counter % self.general_infer_every_n == 0:
+            if not self._general_enabled:
+                self._general_detections = []
+            elif self._frame_counter % self.general_infer_every_n == 0:
                 self._general_detections = self._predict(
                     self.general_model,
                     frame,
@@ -203,12 +239,56 @@ class AIObjectDetector:
             detections = self._stairs_detections + self._general_detections
             self.last_detections = detections
             self.last_error = None
+            with self._lock:
+                self._latest_detections = detections
+                self._latest_ts = time.monotonic()
+                self._last_tick_duration = self._latest_ts - started
         except Exception as exc:
             self.last_error = f"Camera inference failed: {exc}"
             print(f"[Camera] {self.last_error}")
+
+    def _worker_loop(self):
+        while self._running:
+            self._tick()
+            time.sleep(self.frame_interval_seconds)
+
+    def start(self):
+        """Launch the background capture+inference thread (idempotent)."""
+        if self.synchronous or not self.enabled:
+            return
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self._thread.start()
+
+    def analyze_frame(self):
+        """Return the latest detections.
+
+        In synchronous mode (tests/benchmarks) this runs one capture+inference
+        tick inline. In async mode it returns the worker's cached detections,
+        downgrading to an empty list if they are stale (e.g. a hung capture).
+        """
+        if not self.enabled:
             return []
 
-        return detections
+        if self.synchronous:
+            self._tick()
+            with self._lock:
+                return list(self._latest_detections)
+
+        with self._lock:
+            if self._latest_ts == 0.0:
+                return []
+            age = time.monotonic() - self._latest_ts
+            staleness_limit = 2 * self.frame_interval_seconds + 2 * self._last_tick_duration
+            if age > staleness_limit:
+                return []
+            return list(self._latest_detections)
+
+    def set_general_inference_enabled(self, enabled):
+        """Enable/disable the heavier general model (stairs is never gated)."""
+        self._general_enabled = bool(enabled)
 
     def summarize_hazards(self, detections):
         labels = {item.get("label") for item in detections}
@@ -221,6 +301,10 @@ class AIObjectDetector:
         }
 
     def close(self):
+        self._running = False
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            self._thread = None
         if self.picam2:
             try:
                 self.picam2.stop()

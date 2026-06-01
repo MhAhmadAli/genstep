@@ -40,7 +40,8 @@ genstep/
 │   │   ├── ir.py               # IR drop-off detection
 │   │   └── camera.py           # Camera feed for AI
 │   ├── feedback/
-│   │   └── alerter.py          # Buzzer alert patterns
+│   │   ├── alerter.py          # Buzzer alert patterns
+│   │   └── announcer.py        # Spoken object announcements (TTS)
 │   └── comms/
 │       ├── gps.py              # GPS NMEA parsing
 │       └── gsm.py              # GSM SMS via AT commands
@@ -93,6 +94,16 @@ sudo systemctl restart pigpiod-genstep.service
 sudo systemctl disable --now pigpiod-genstep.service
 ```
 
+### Pin CPU governor to performance (faster inference)
+By default the Pi scales CPU frequency on demand, which throttles YOLO inference. Install the included service to pin all cores to the `performance` governor at boot:
+```bash
+sudo ./scripts/install_cpu_perf_governor.sh
+```
+Disable with:
+```bash
+sudo systemctl disable --now cpu-perf-governor-genstep.service
+```
+
 ### UART Mapping Checks (Raspberry Pi)
 - Verify enabled UART devices before running comms features:
   ```bash
@@ -133,6 +144,37 @@ curl http://<PI_IP>:5000/api/telemetry
   - `CAMERA_IMAGE_SIZE`
 - `GENERAL_HAZARD_CLASSES` defines which general-model classes are treated as obstacles in the main alert logic.
 
+#### Inference backend (NCNN vs PyTorch)
+- `CAMERA_INFERENCE_BACKEND` selects the runtime: `"ncnn"` (ARM/NEON-optimized, much faster on the Pi) or `"pytorch"` (original Ultralytics runtime).
+- NCNN runs against exported model directories (`STAIRS_MODEL_NCNN_PATH`, `GENERAL_MODEL_NCNN_PATH`). Generate them once on the Pi and commit the output:
+  ```bash
+  python3 scripts/export_models.py
+  # produces yolo11n_ncnn_model/ and models/stairs_ncnn_model/
+  ```
+- `CAMERA_INFER_THREADS` pins the OpenCV/OMP thread count (default 3 on the 4-core Pi 4, leaving one core free for the sonar/buzzer/Flask/TTS work).
+
+#### Performance pipeline
+- The heavier general model is **sonar-gated**: it only runs when the front obstacle is within `CAMERA_GENERAL_GATE_DISTANCE_M`. The stairs model always runs.
+- Capture and inference run on a **background thread**, so the main safety loop never blocks on inference.
+
+#### Benchmarking
+Run on the Pi with the real models to compare backends:
+```bash
+python3 scripts/benchmark_inference.py --backend pytorch --no-camera --image <real.jpg> --imgsz 320 --frames 200
+python3 scripts/benchmark_inference.py --backend ncnn --with-camera --imgsz 320 --frames 200
+```
+Record results in `docs/inference_benchmarks.md`.
+
+### Spoken Object Announcements (3.5mm jack)
+- Controlled by `ENABLE_AUDIO_FEEDBACK` in `src/config.py`. When an obstacle is within the gate distance, detected hazards (and stairs) are spoken through the Pi's 3.5mm headphone jack using offline TTS (pyttsx3 + espeak-ng).
+- Tunables: `AUDIO_ANNOUNCE_COOLDOWN_SECONDS` (per-label repeat suppression), `AUDIO_TTS_RATE`, `AUDIO_TTS_VOLUME`.
+- One-time Pi audio setup:
+  ```bash
+  sudo apt install -y espeak-ng        # offline TTS backend used by pyttsx3
+  amixer cset numid=3 1                # force audio output to the 3.5mm jack
+  amixer set Master 90%                # set output volume
+  ```
+
 Before running, set these values in `src/config.py`:
 - `ENABLE_GPS` and `ENABLE_GSM` to enable/disable each module independently.
 - `EMERGENCY_PHONE_NUMBER` for SMS destination.
@@ -166,7 +208,7 @@ python3 tests/test_gsm.py             # Test GSM module
 
 ### Run Unit Tests
 ```bash
-python3 -m unittest tests/test_calibration.py tests/test_gps.py tests/test_gsm.py tests/test_emergency_flow.py tests/test_api_server.py tests/test_camera_pipeline.py -v
+python3 -m unittest tests/test_calibration.py tests/test_gps.py tests/test_gsm.py tests/test_emergency_flow.py tests/test_api_server.py tests/test_camera_pipeline.py tests/test_announcer.py -v
 ```
 
 ## Emergency SMS Payload

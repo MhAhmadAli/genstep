@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -58,6 +59,7 @@ class TestCameraPipeline(unittest.TestCase):
             general_conf=0.4,
             hazard_classes={"person"},
             frame_interval_seconds=0.05,
+            synchronous=True,
             model_factory=model_factory,
             capture=capture,
         )
@@ -81,6 +83,77 @@ class TestCameraPipeline(unittest.TestCase):
         self.assertTrue(hazards["general_hazard_detected"])
         self.assertIn("person", hazards["labels"])
 
+        detector.close()
+        self.assertTrue(capture._released)
+
+    def test_general_inference_gating_skips_general_model(self):
+        capture = _FakeCapture()
+        detector = AIObjectDetector(
+            enabled=True,
+            hazard_classes={"person"},
+            frame_interval_seconds=0.05,
+            synchronous=True,
+            model_factory=lambda _: _FakeModel(names={}, boxes=[]),
+            capture=capture,
+        )
+        detector.stairs_model = _FakeModel(
+            names={0: "stairs"},
+            boxes=[_FakeBox(0, 0.92, [10, 20, 30, 40])],
+        )
+        detector.general_model = _FakeModel(
+            names={0: "person"},
+            boxes=[_FakeBox(0, 0.88, [1, 2, 3, 4])],
+        )
+        detector.enabled = True
+
+        detector.set_general_inference_enabled(False)
+        gated = detector.analyze_frame()
+        self.assertEqual([d["source"] for d in gated], ["stairs_model"])
+
+        detector.set_general_inference_enabled(True)
+        ungated = detector.analyze_frame()
+        self.assertEqual(
+            sorted(d["source"] for d in ungated),
+            ["general_model", "stairs_model"],
+        )
+        detector.close()
+
+    def test_async_worker_caches_detections(self):
+        capture = _FakeCapture()
+        detector = AIObjectDetector(
+            enabled=True,
+            hazard_classes={"person"},
+            frame_interval_seconds=0.05,
+            synchronous=False,
+            model_factory=lambda _: _FakeModel(names={}, boxes=[]),
+            capture=capture,
+        )
+        detector.stairs_model = _FakeModel(
+            names={0: "stairs"},
+            boxes=[_FakeBox(0, 0.92, [10, 20, 30, 40])],
+        )
+        detector.general_model = _FakeModel(
+            names={0: "person"},
+            boxes=[_FakeBox(0, 0.88, [1, 2, 3, 4])],
+        )
+        detector.enabled = True
+
+        self.assertEqual(detector.analyze_frame(), [])  # nothing produced yet
+
+        detector.start()
+        deadline = time.monotonic() + 2.0
+        detections = []
+        while time.monotonic() < deadline:
+            detections = detector.analyze_frame()
+            if detections:
+                break
+            time.sleep(0.02)
+
+        self.assertEqual(len(detections), 2)
+        self.assertEqual(
+            sorted(d["source"] for d in detections),
+            ["general_model", "stairs_model"],
+        )
         detector.close()
         self.assertTrue(capture._released)
 

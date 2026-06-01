@@ -6,6 +6,7 @@ from sensors.ultrasonic import UltrasonicArray
 from sensors.ir import IRArray
 from sensors.camera import AIObjectDetector
 from feedback.alerter import BuzzerAlerter
+from feedback.announcer import AudioAnnouncer
 from comms.gps import GPSModule
 from comms.gsm import GSMModule
 from comms.api_server import MobileAPIServer
@@ -35,8 +36,11 @@ def main():
     camera = AIObjectDetector(
         camera_index=CAMERA_INDEX,
         enabled=ENABLE_CAMERA_AI,
+        backend=CAMERA_INFERENCE_BACKEND,
         stairs_model_path=STAIRS_MODEL_PATH,
         general_model_path=GENERAL_MODEL_PATH,
+        stairs_model_ncnn_path=STAIRS_MODEL_NCNN_PATH,
+        general_model_ncnn_path=GENERAL_MODEL_NCNN_PATH,
         stairs_conf=STAIRS_CONFIDENCE_THRESHOLD,
         general_conf=GENERAL_CONFIDENCE_THRESHOLD,
         hazard_classes=GENERAL_HAZARD_CLASSES,
@@ -46,8 +50,15 @@ def main():
         image_size=CAMERA_IMAGE_SIZE,
         stairs_infer_every_n=CAMERA_STAIRS_INFER_EVERY_N,
         general_infer_every_n=CAMERA_GENERAL_INFER_EVERY_N,
+        infer_threads=CAMERA_INFER_THREADS,
     )
     buzzer = BuzzerAlerter(BUZZER_PIN, cooldown_seconds=BUZZER_COOLDOWN_SECONDS)
+    announcer = AudioAnnouncer(
+        enabled=ENABLE_AUDIO_FEEDBACK,
+        cooldown_seconds=AUDIO_ANNOUNCE_COOLDOWN_SECONDS,
+        rate=AUDIO_TTS_RATE,
+        volume=AUDIO_TTS_VOLUME,
+    )
 
     gps = None
     gsm = None
@@ -173,6 +184,7 @@ def main():
         )
 
     if ENABLE_CAMERA_AI and camera.enabled:
+        camera.start()
         print("[Camera] AI inference enabled.")
     elif ENABLE_CAMERA_AI:
         print(f"[Camera] Disabled due to initialization failure: {camera.last_error}")
@@ -211,12 +223,26 @@ def main():
             drop_off = ir.detect_dropoff()
 
             # 4. Read camera AI detections
+            general_gate_open = distance is not None and distance < CAMERA_GENERAL_GATE_DISTANCE_M
+            if camera.enabled:
+                camera.set_general_inference_enabled(general_gate_open)
             objects = camera.analyze_frame() if camera.enabled else []
             camera_hazards = camera.summarize_hazards(objects) if camera.enabled else {
                 "stairs_detected": False,
                 "general_hazard_detected": False,
                 "labels": [],
             }
+
+            # Speak what is coming up, but only while the general model is gated
+            # on (something within gate distance). Stairs are always worth saying.
+            if camera.enabled and general_gate_open:
+                announce = [
+                    label for label in camera_hazards["labels"]
+                    if label in GENERAL_HAZARD_CLASSES
+                ]
+                if camera_hazards["stairs_detected"]:
+                    announce.append("stairs")
+                announcer.announce_labels(announce)
 
             # 5. Logic & Feedback
             raw_is_step = (
@@ -362,6 +388,7 @@ def main():
         ir.close()
         camera.close()
         buzzer.close()
+        announcer.close()
         if gps:
             gps.close()
         if gsm:
