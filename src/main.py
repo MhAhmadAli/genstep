@@ -40,10 +40,14 @@ def main():
         stairs_conf=STAIRS_CONFIDENCE_THRESHOLD,
         general_conf=GENERAL_CONFIDENCE_THRESHOLD,
         hazard_classes=GENERAL_HAZARD_CLASSES,
+        use_picamera2=CAMERA_USE_PICAMERA2,
+        camera_resolution=CAMERA_RESOLUTION,
         frame_interval_seconds=CAMERA_FRAME_INTERVAL_SECONDS,
         image_size=CAMERA_IMAGE_SIZE,
+        stairs_infer_every_n=CAMERA_STAIRS_INFER_EVERY_N,
+        general_infer_every_n=CAMERA_GENERAL_INFER_EVERY_N,
     )
-    buzzer = BuzzerAlerter(BUZZER_PIN)
+    buzzer = BuzzerAlerter(BUZZER_PIN, cooldown_seconds=BUZZER_COOLDOWN_SECONDS)
 
     gps = None
     gsm = None
@@ -108,6 +112,66 @@ def main():
     else:
         print("[API] Disabled by configuration.")
 
+    if api_server:
+        def _build_location_payload():
+            if not gps:
+                return None
+            location = gps.get_location()
+            if not location:
+                return None
+            return {
+                "lat": location["latitude"],
+                "lng": location["longitude"],
+                "accuracy_m": 8.5,
+                "timestamp_unix": time.time(),
+            }
+
+        def _handle_find_stick():
+            if api_server and api_server.is_rest_mode_enabled():
+                return {
+                    "ok": False,
+                    "message": "Device is in rest mode; buzzer is disabled",
+                    "status_code": 409,
+                }
+            started = buzzer.find_stick_pattern()
+            if not started:
+                remaining = buzzer.cooldown_remaining_seconds()
+                return {
+                    "ok": False,
+                    "message": f"Buzzer cooldown active. Try again in {remaining:.1f}s",
+                }
+            location_payload = _build_location_payload()
+            if location_payload is None:
+                return {
+                    "message": "Find stick started; GPS fix not available yet",
+                    "location": None,
+                }
+            return {
+                "message": "Find stick started",
+                "location": location_payload,
+            }
+
+        def _handle_play_sound():
+            if api_server and api_server.is_rest_mode_enabled():
+                return {
+                    "ok": False,
+                    "message": "Device is in rest mode; buzzer is disabled",
+                    "status_code": 409,
+                }
+            started = buzzer.play_sound()
+            if not started:
+                remaining = buzzer.cooldown_remaining_seconds()
+                return {
+                    "ok": False,
+                    "message": f"Buzzer cooldown active. Try again in {remaining:.1f}s",
+                }
+            return {"message": "Buzzer beep played"}
+
+        api_server.set_action_handlers(
+            find_stick_handler=_handle_find_stick,
+            play_sound_handler=_handle_play_sound,
+        )
+
     if ENABLE_CAMERA_AI and camera.enabled:
         print("[Camera] AI inference enabled.")
     elif ENABLE_CAMERA_AI:
@@ -124,6 +188,11 @@ def main():
 
     current_alert_level = 0  # 0=none, 1=light, 2=moderate, 3=intense
     last_sos_sent_at = 0.0
+    step_candidate_reads = 0
+    startup_ts = time.monotonic()
+    last_alert_state_change_ts = startup_ts
+    last_target_alert_level = 0
+    alert_silenced_for_stale_state = False
 
     print("System active. Monitoring environments...")
     if ENABLE_MANUAL_SOS_STDIN and sys.stdin.isatty():
@@ -131,6 +200,7 @@ def main():
 
     try:
         while True:
+            now = time.monotonic()
             # 1. Read Obstacle Distance (Front)
             distance = sonar.get_obstacle_distance()
             
@@ -149,51 +219,72 @@ def main():
             }
 
             # 5. Logic & Feedback
-            is_step = ground_dist > step_down or ground_dist < step_up
+            raw_is_step = (
+                ground_dist is not None
+                and ground_dist <= STEP_DETECTION_MAX_DISTANCE
+                and (ground_dist > step_down or ground_dist < step_up)
+            )
+            if raw_is_step:
+                step_candidate_reads += 1
+            else:
+                step_candidate_reads = 0
+            is_step = step_candidate_reads >= STEP_CONFIRMATION_READS
             camera_intense_condition = (
                 camera_hazards["stairs_detected"] or camera_hazards["general_hazard_detected"]
             )
+            uptime_seconds = time.monotonic() - startup_ts
+            startup_alert_suppressed = uptime_seconds < ALERT_STARTUP_GRACE_SECONDS
             intense_condition = (
                 drop_off
                 or is_step
                 or distance < DIST_INTENSE_ALERT
                 or camera_intense_condition
             )
+            rest_mode_enabled = api_server.is_rest_mode_enabled() if api_server else False
 
-            if drop_off or is_step or camera_hazards["stairs_detected"]:
-                # Extreme danger or step/drop-off detected, immediate intense alert
-                if current_alert_level != 3:
-                    buzzer.intense_alert()
-                    current_alert_level = 3
-
-            elif camera_hazards["general_hazard_detected"]:
-                if current_alert_level != 2:
-                    buzzer.moderate_alert()
-                    current_alert_level = 2
-
-            elif distance < DIST_INTENSE_ALERT:
-                if current_alert_level != 3:
-                    buzzer.intense_alert()
-                    current_alert_level = 3
-
-            elif distance < DIST_MODERATE_ALERT:
-                if current_alert_level != 2:
-                    buzzer.moderate_alert()
-                    current_alert_level = 2
-
+            if rest_mode_enabled:
+                target_alert_level = 0
+            elif startup_alert_suppressed:
+                target_alert_level = 0
+            elif drop_off or is_step or camera_hazards["stairs_detected"] or distance < DIST_INTENSE_ALERT:
+                target_alert_level = 3
+            elif camera_hazards["general_hazard_detected"] or distance < DIST_MODERATE_ALERT:
+                target_alert_level = 2
             elif distance < DIST_LIGHT_ALERT:
-                if current_alert_level != 1:
+                target_alert_level = 1
+            else:
+                target_alert_level = 0
+
+            if target_alert_level != last_target_alert_level:
+                last_target_alert_level = target_alert_level
+                last_alert_state_change_ts = now
+                alert_silenced_for_stale_state = False
+                if target_alert_level == 0:
+                    if current_alert_level != 0:
+                        buzzer.stop()
+                    current_alert_level = 0
+                elif target_alert_level == 3:
+                    buzzer.intense_alert()
+                    current_alert_level = 3
+                elif target_alert_level == 2:
+                    buzzer.moderate_alert()
+                    current_alert_level = 2
+                else:
                     buzzer.light_alert()
                     current_alert_level = 1
-
-            else:
-                if current_alert_level != 0:
-                    buzzer.stop()
-                    current_alert_level = 0
+            elif (
+                target_alert_level > 0
+                and not alert_silenced_for_stale_state
+                and (now - last_alert_state_change_ts) >= ALERT_MAX_ACTIVE_SECONDS
+            ):
+                buzzer.stop()
+                current_alert_level = 0
+                alert_silenced_for_stale_state = True
 
             if api_server:
                 api_server.update_state(
                     status="running",
+                    rest_mode_enabled=rest_mode_enabled,
                     obstacle_distance_m=distance,
                     ground_distance_m=ground_dist,
                     drop_off=drop_off,
@@ -206,14 +297,13 @@ def main():
                 )
 
             manual_sos = _read_manual_sos_trigger()
-            now = time.monotonic()
             if should_send_sos(
                 intense_condition,
                 manual_sos,
                 now,
                 last_sos_sent_at,
                 SOS_RATE_LIMIT_SECONDS,
-            ):
+            ) and uptime_seconds >= SOS_STARTUP_GRACE_SECONDS:
                 trigger_reason = "manual" if manual_sos else "blocked"
                 location = gps.get_location() if gps else None
                 message = format_sos_message(trigger_reason, location)

@@ -1,0 +1,17 @@
+[Unit]
+Description=GenStep main application
+After=network.target pigpiod-genstep.service
+Wants=network.target pigpiod-genstep.service
+
+[Service]
+Type=simple
+User=genstep
+Group=genstep
+WorkingDirectory=/home/genstep/Desktop/genstep
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/genstep/Desktop/genstep/.venv/bin/python /home/genstep/Desktop/genstep/src/main.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

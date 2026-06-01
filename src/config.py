@@ -16,6 +16,8 @@ IR_2_PIN = 5
 
 # Feedback
 BUZZER_PIN = 8
+# Minimum silence gap between buzzer starts to reduce repeated annoyance.
+BUZZER_COOLDOWN_SECONDS = 10
 
 # Communication
 # Default mode uses pigpio software serial on GPIO pins.
@@ -59,25 +61,37 @@ MOBILE_API_PORT = 5000
 # Camera AI
 ENABLE_CAMERA_AI = True
 CAMERA_INDEX = 0
+CAMERA_USE_PICAMERA2 = True
+# Capture at a smaller source resolution for better Pi-side inference throughput.
+CAMERA_RESOLUTION = (640, 480)
 CAMERA_FRAME_INTERVAL_SECONDS = 0.2
-CAMERA_IMAGE_SIZE = 640
+CAMERA_IMAGE_SIZE = 320
 STAIRS_MODEL_PATH = "models/stairs.pt"
 GENERAL_MODEL_PATH = "yolo11n.pt"
 STAIRS_CONFIDENCE_THRESHOLD = 0.45
 GENERAL_CONFIDENCE_THRESHOLD = 0.35
+CAMERA_STAIRS_INFER_EVERY_N = 1
+CAMERA_GENERAL_INFER_EVERY_N = 2
 # Classes treated as path hazards by the general model.
 GENERAL_HAZARD_CLASSES = {"person", "bicycle", "motorcycle", "car", "bus", "truck"}
 
 # Actionable Thresholds (in meters)
-DIST_LIGHT_ALERT = 3.0
-DIST_MODERATE_ALERT = 1.5
-DIST_INTENSE_ALERT = 1.0
+DIST_LIGHT_ALERT = 1.0
+DIST_MODERATE_ALERT = 0.5
+DIST_INTENSE_ALERT = 0.3
 
 # Downward Sonar Thresholds - Fallback defaults (in meters)
 # Used when no calibration data exists
 STEP_UP_THRESHOLD = 0.15
 STEP_DOWN_THRESHOLD = 0.45
 GROUND_BASELINE = 0.30
+STEP_DETECTION_MAX_DISTANCE = 1.0
+STEP_CONFIRMATION_READS = 3
+
+# Startup grace periods (seconds) to prevent false alerts/SOS while sensors settle.
+ALERT_STARTUP_GRACE_SECONDS = 8
+SOS_STARTUP_GRACE_SECONDS = 20
+ALERT_MAX_ACTIVE_SECONDS = 5
 
 # Calibration Settings
 import os

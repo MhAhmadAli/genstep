@@ -4,6 +4,8 @@ __pycache__/
 *$py.class
 *.so
 *.egg-info/
+.pip-cache/
+.pip-tmp/
 dist/
 build/
 *.egg
@@ -23,6 +25,7 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+.lgd-nfy0
 
 # Calibration data (auto-generated, user-specific)
 data/calibration.json
